@@ -15,6 +15,8 @@ use rand::Rng;
 const SCREEN_WIDTH: i32 = 80;
 const SCREEN_HEIGHT: i32 = 50;
 
+const INVENTORY_WIDTH: i32 = 50;
+
 const MAP_WIDTH: i32 = 80;
 const MAP_HEIGHT: i32 = 43;
 
@@ -27,7 +29,10 @@ const FOV_LIGHT_WALLS: bool = true;
 const TORCH_RADIUS: i32 = 10;
 
 const PLAYER: usize = 0;
+const HEAL_AMOUNT: i32 = 4;
+
 const MAX_ROOM_MONSTERS: i32 = 3;
+const MAX_ROOM_ITEMS: i32 = 2;
 
 const LIMIT_FPS: i32 = 20;
 
@@ -72,6 +77,7 @@ struct GameObject {
     alive: bool,
     fighter: Option<Fighter>,
     ai: Option<Ai>,
+    item: Option<Item>,
 }
 
 impl GameObject {
@@ -86,6 +92,7 @@ impl GameObject {
             alive: false,
             fighter: None,
             ai: None,
+            item: None,
         }
     }
 
@@ -156,6 +163,16 @@ impl GameObject {
             );
         }
     }
+
+    pub fn heal(&mut self, amount: i32) {
+        if let Some(ref mut fighter) = self.fighter {
+            fighter.hp += amount;
+
+            if fighter.hp > fighter.max_hp {
+                fighter.hp = fighter.max_hp;
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -211,6 +228,16 @@ impl Tile {
             explored: false,
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Item {
+    Heal,
+}
+
+enum UseResult {
+    UsedUp,
+    Cancelled,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -280,9 +307,13 @@ fn main() {
     let mut map = create_map(&mut game_objects);
 
     let mut fov_map = FovMap::new(MAP_WIDTH, MAP_HEIGHT);
-    let mut previous_player_position = (-1, -1);
+    // let mut previous_player_position = (-1, -1);
     let mut mouse = Default::default();
     let mut key = Default::default();
+
+    let mut inventory: Vec<GameObject> = vec![];
+
+    // create the list of game messages and their colors, starts empty
     let mut messages: Messages = vec![];
 
     message(
@@ -309,9 +340,6 @@ fn main() {
             _ => key = Default::default(),
         }
 
-        // Because of this line, the death of an object isn't properly rendered. Find a way to take that into account.
-        let fov_recompute =
-            previous_player_position != (game_objects[PLAYER].x, game_objects[PLAYER].y);
         render_all(
             &mut root,
             &mut con,
@@ -321,7 +349,6 @@ fn main() {
             &mut map,
             &messages,
             &mut fov_map,
-            fov_recompute,
         );
 
         // Clear the GameObjects once their position is moved to the visible screen.
@@ -331,8 +358,14 @@ fn main() {
         }
 
         // Handle player movement
-        previous_player_position = game_objects[PLAYER].pos();
-        let action = handle_keys(key, &mut root, &map, &mut game_objects, &mut messages);
+        let action = handle_keys(
+            key,
+            &mut root,
+            &map,
+            &mut game_objects,
+            &mut inventory,
+            &mut messages,
+        );
 
         if action == PlayerAction::Exit {
             break;
@@ -352,7 +385,8 @@ fn handle_keys(
     key: Key,
     root: &mut Root,
     map: &Map,
-    objects: &mut [GameObject],
+    objects: &mut Vec<GameObject>,
+    inventory: &mut Vec<GameObject>,
     messages: &mut Messages,
 ) -> PlayerAction {
     use PlayerAction::*;
@@ -375,6 +409,32 @@ fn handle_keys(
         (Key { code: Right, .. }, true) => {
             player_move_or_attack(1, 0, map, objects, messages);
             TookTurn
+        }
+        (Key { printable: 'g', .. }, true) => {
+            // pick up an item
+            let item_id = objects
+                .iter()
+                .position(|object| object.pos() == objects[PLAYER].pos() && object.item.is_some());
+
+            if let Some(item_id) = item_id {
+                pick_item_up(item_id, objects, inventory, messages);
+            }
+
+            DidntTakeTurn
+        }
+        (Key { printable: 'i', .. }, true) => {
+            // show the inventory: if an item is selected, use it
+            let inventory_index = inventory_menu(
+                inventory,
+                "Press the key next to an item to use it, or any other to cancel. \n",
+                root,
+            );
+
+            if let Some(inventory_index) = inventory_index {
+                use_item(inventory_index, inventory, objects, messages)
+            }
+
+            DidntTakeTurn
         }
         (
             Key {
@@ -401,118 +461,121 @@ fn render_all(
     game_objects: &[GameObject],
     map: &mut Map,
     messages: &Messages,
-    fov_map: &mut FovMap,
-    fov_recompute: bool,
+    fov_map: &mut FovMap
 ) {
-    // Don't rerender if the user hasn't moved - Causes a bug (things don't render as dead until the turn after they die)
-    if true {
-        let player = &game_objects[PLAYER];
-        fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
+    // originally checked if user moved, but that caused a bug: every action was delayed by one turn. No observable adverse effects from removing the check.
+    let player = &game_objects[PLAYER];
+    fov_map.compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
 
-        // Go through all tiles and set their background color
-        for y in 0..MAP_HEIGHT {
-            for x in 0..MAP_WIDTH {
-                // check if it's a wall by checking if it blocks sight
-                let visible = fov_map.is_in_fov(x, y);
-                let is_wall = map[x as usize][y as usize].block_sight;
-                let color = match (visible, is_wall) {
-                    // Outside FOV
-                    (false, true) => COLOR_DARK_WALL,
-                    (false, false) => COLOR_DARK_GROUND,
-                    // Inside FOV
-                    (true, true) => COLOR_LIGHT_WALL,
-                    (true, false) => COLOR_LIGHT_GROUND,
-                };
+    // Go through all tiles and set their background color
+    for y in 0..MAP_HEIGHT {
+        for x in 0..MAP_WIDTH {
+            // check if it's a wall by checking if it blocks sight
+            let visible = fov_map.is_in_fov(x, y);
+            let is_wall = map[x as usize][y as usize].block_sight;
+            let color = match (visible, is_wall) {
+                // Outside FOV
+                (false, true) => COLOR_DARK_WALL,
+                (false, false) => COLOR_DARK_GROUND,
+                // Inside FOV
+                (true, true) => COLOR_LIGHT_WALL,
+                (true, false) => COLOR_LIGHT_GROUND,
+            };
 
-                let is_explored = &mut map[x as usize][y as usize].explored;
+            let is_explored = &mut map[x as usize][y as usize].explored;
 
-                if visible {
-                    // It's visible, set it to explored
-                    *is_explored = true;
-                }
-
-                if *is_explored {
-                    con.set_char_background(x, y, color, BackgroundFlag::Set);
-                }
-            }
-        }
-
-        // Draw the GameObjects
-        let mut to_draw: Vec<_> = game_objects
-            .iter()
-            .filter(|item| fov_map.is_in_fov(item.x, item.y))
-            .collect();
-        // Sort so that non-blocking objets come first
-        to_draw.sort_by(|item1, item2| item1.blocks.cmp(&item2.blocks));
-        // Draw the items in the list
-        for object in to_draw {
-            // only render if in FOV
-            if fov_map.is_in_fov(object.x, object.y) {
-                object.draw(con);
-            }
-        }
-
-        // Blit onto the actual screen
-        blit(
-            con,
-            (0, 0),
-            (SCREEN_WIDTH, SCREEN_HEIGHT),
-            root,
-            (0, 0),
-            1.0,
-            1.0,
-        );
-
-        panel.set_default_background(colors::BLACK);
-        panel.clear();
-
-        // Print the game messages, one line at a time
-        let mut y = MSG_HEIGHT as i32;
-
-        for &(ref msg, color) in messages.iter().rev() {
-            let msg_height = panel.get_height_rect(MSG_X, y, MSG_WIDTH, 0, msg);
-            y -= msg_height;
-
-            if y < 0 {
-                break;
+            if visible {
+                // It's visible, set it to explored
+                *is_explored = true;
             }
 
-            panel.set_default_foreground(color);
-            panel.print_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+            if *is_explored {
+                con.set_char_background(x, y, color, BackgroundFlag::Set);
+            }
         }
-
-        // Show the players stats
-        let hp = game_objects[PLAYER].fighter.map_or(0, |f| f.hp);
-        let max_hp = game_objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
-        render_bar(
-            panel,
-            1,
-            1,
-            BAR_WIDTH,
-            "HP",
-            hp,
-            max_hp,
-            colors::LIGHT_RED,
-            colors::DARKER_RED,
-        );
-
-        // Display the names of the objects under th mouse
-        panel.set_default_foreground(colors::LIGHT_GREY);
-        panel.print_ex(1, 0, BackgroundFlag::None, TextAlignment::Left, get_names_under_mouse(mouse, game_objects, fov_map));
-
-        blit(
-            panel,
-            (0, 0),
-            (SCREEN_WIDTH, PANEL_HEIGHT),
-            root,
-            (0, PANEL_Y),
-            1.0,
-            1.0,
-        );
-
-        // Make the console actually visible
-        root.flush();
     }
+
+    // Draw the GameObjects
+    let mut to_draw: Vec<_> = game_objects
+        .iter()
+        .filter(|item| fov_map.is_in_fov(item.x, item.y))
+        .collect();
+    // Sort so that non-blocking objets come first
+    to_draw.sort_by(|item1, item2| item1.blocks.cmp(&item2.blocks));
+    // Draw the items in the list
+    for object in to_draw {
+        // only render if in FOV
+        if fov_map.is_in_fov(object.x, object.y) {
+            object.draw(con);
+        }
+    }
+
+    // Blit onto the actual screen
+    blit(
+        con,
+        (0, 0),
+        (SCREEN_WIDTH, SCREEN_HEIGHT),
+        root,
+        (0, 0),
+        1.0,
+        1.0,
+    );
+
+    panel.set_default_background(colors::BLACK);
+    panel.clear();
+
+    // Print the game messages, one line at a time
+    let mut y = MSG_HEIGHT as i32;
+
+    for &(ref msg, color) in messages.iter().rev() {
+        let msg_height = panel.get_height_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+        y -= msg_height;
+
+        if y < 0 {
+            break;
+        }
+
+        panel.set_default_foreground(color);
+        panel.print_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+    }
+
+    // Show the players stats
+    let hp = game_objects[PLAYER].fighter.map_or(0, |f| f.hp);
+    let max_hp = game_objects[PLAYER].fighter.map_or(0, |f| f.max_hp);
+    render_bar(
+        panel,
+        1,
+        1,
+        BAR_WIDTH,
+        "HP",
+        hp,
+        max_hp,
+        colors::LIGHT_RED,
+        colors::DARKER_RED,
+    );
+
+    // Display the names of the objects under th mouse
+    panel.set_default_foreground(colors::LIGHT_GREY);
+    panel.print_ex(
+        1,
+        0,
+        BackgroundFlag::None,
+        TextAlignment::Left,
+        get_names_under_mouse(mouse, game_objects, fov_map),
+    );
+
+    blit(
+        panel,
+        (0, 0),
+        (SCREEN_WIDTH, PANEL_HEIGHT),
+        root,
+        (0, PANEL_Y),
+        1.0,
+        1.0,
+    );
+
+    // Make the console actually visible
+    root.flush();
 }
 
 fn create_map(objects: &mut Vec<GameObject>) -> Map {
@@ -535,7 +598,7 @@ fn create_map(objects: &mut Vec<GameObject>) -> Map {
         if !failed {
             // There are no intersections so we can process this
             create_room(new_room, &mut map);
-            place_objects(new_room, objects);
+            place_objects(new_room, &mut map, objects);
 
             let (center_x, center_y) = new_room.center();
 
@@ -581,8 +644,9 @@ fn create_v_tunnel(y1: i32, y2: i32, x: i32, map: &mut Map) {
     }
 }
 
-fn place_objects(room: Rect, objects: &mut Vec<GameObject>) {
+fn place_objects(room: Rect, map: &Map, objects: &mut Vec<GameObject>) {
     let num_monsters = rand::thread_rng().gen_range(0, MAX_ROOM_MONSTERS + 1);
+    let num_items = rand::thread_rng().gen_range(0, MAX_ROOM_ITEMS + 1);
 
     for _ in 0..num_monsters {
         // Choose Random spot
@@ -618,6 +682,19 @@ fn place_objects(room: Rect, objects: &mut Vec<GameObject>) {
         monster.alive = true;
 
         objects.push(monster);
+    }
+
+    for _ in 0..num_items {
+        // choose random spot for this item
+        let x = rand::thread_rng().gen_range(room.x1 + 1, room.x2);
+        let y = rand::thread_rng().gen_range(room.y1 + 1, room.y2);
+
+        if !is_blocked(x, y, map, objects) {
+            // Create a healing potion
+            let mut object = GameObject::new(x, y, '!', "healing potion", colors::VIOLET, false);
+            object.item = Some(Item::Heal);
+            objects.push(object);
+        }
     }
 }
 
@@ -674,6 +751,34 @@ fn player_move_or_attack(
     }
 }
 
+fn pick_item_up(
+    object_id: usize,
+    objects: &mut Vec<GameObject>,
+    inventory: &mut Vec<GameObject>,
+    messages: &mut Messages,
+) {
+    if inventory.len() >= 26 {
+        message(
+            messages,
+            format!(
+                "Your inventory is full, cannot pick up {}",
+                objects[object_id].name
+            ),
+            colors::RED,
+        );
+    } else {
+        let item = objects.swap_remove(object_id);
+
+        message(
+            messages,
+            format!("You picked up a {}!", item.name),
+            colors::GREEN,
+        );
+
+        inventory.push(item);
+    }
+}
+
 fn ai_take_turn(
     monster_id: usize,
     map: &Map,
@@ -689,7 +794,6 @@ fn ai_take_turn(
             let (player_x, player_y) = objects[PLAYER].pos();
             move_towards(monster_id, player_x, player_y, map, objects);
         } else if objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
-
             // Close enough, attack! (if the player is still alive)
             let (monster, player) = mut_two(monster_id, PLAYER, objects);
             monster.attack(player, messages);
@@ -786,4 +890,136 @@ fn get_names_under_mouse(mouse: Mouse, objects: &[GameObject], fov_map: &FovMap)
         .collect::<Vec<_>>();
 
     names.join(", ")
+}
+
+fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, root: &mut Root) -> Option<usize> {
+    assert!(
+        options.len() <= 26,
+        "Cannot have a menu with more than 26 options"
+    );
+
+    // calculate total height for the header (after auto-wrap) and one line per option
+    let header_height = root.get_height_rect(0, 0, width, SCREEN_HEIGHT, header);
+    let height = options.len() as i32 + header_height;
+
+    let mut window = Offscreen::new(width, height);
+
+    // print the header, with auto-wrap;
+    window.set_default_foreground(colors::WHITE);
+    window.print_rect_ex(
+        0,
+        0,
+        width,
+        height,
+        BackgroundFlag::None,
+        TextAlignment::Left,
+        header,
+    );
+
+    // print all the options
+    for (index, option_text) in options.iter().enumerate() {
+        // essentially ASCII math, probably a better way of approaching this entire menu
+        let menu_letter = (b'a' + index as u8) as char;
+        let text = format!("({}) {}", menu_letter, option_text.as_ref());
+        window.print_ex(
+            0,
+            header_height + index as i32,
+            BackgroundFlag::None,
+            TextAlignment::Left,
+            text,
+        );
+    }
+
+    let x = SCREEN_WIDTH / 2 - width / 2;
+    let y = SCREEN_HEIGHT / 2 - height / 2;
+    tcod::console::blit(&mut window, (0, 0), (width, height), root, (x, y), 1.0, 0.7);
+
+    // present the root console to the player and wait for a key press
+    root.flush();
+    let key = root.wait_for_keypress(true);
+
+    // convert the ASCII code to an index; if it corresponds to an option, return it
+    if key.printable.is_alphabetic() {
+        let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
+        if index < options.len() {
+            Some(index)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+fn inventory_menu(inventory: &[GameObject], header: &str, root: &mut Root) -> Option<usize> {
+    let options = if inventory.len() == 0 {
+        vec!["Inventory is empty.".into()]
+    } else {
+        inventory.iter().map(|item| item.name.clone()).collect()
+    };
+
+    let inventory_index = menu(header, &options, INVENTORY_WIDTH, root);
+
+    // if an item was chosen, return it
+    if inventory.len() > 0 {
+        inventory_index
+    } else {
+        None
+    }
+}
+
+fn use_item(
+    inventory_id: usize,
+    inventory: &mut Vec<GameObject>,
+    objects: &mut [GameObject],
+    messages: &mut Messages,
+) {
+    use Item::*;
+
+    // just call the "use_function" if it is defined
+    if let Some(item) = inventory[inventory_id].item {
+        let on_use = match item {
+            Heal => cast_heal,
+        };
+
+        match on_use(inventory_id, objects, messages) {
+            UseResult::UsedUp => {
+                // destroy after use, unless it was cancelled for some reason
+                inventory.remove(inventory_id);
+            }
+            UseResult::Cancelled => {
+                message(messages, "Cancelled", colors::WHITE);
+            }
+        }
+    } else {
+        message(
+            messages,
+            format!("The {} cannot be used.", inventory[inventory_id].name),
+            colors::WHITE,
+        );
+    }
+}
+
+fn cast_heal(
+    _inventory_id: usize,
+    objects: &mut [GameObject],
+    messages: &mut Messages,
+) -> UseResult {
+    // heal the player
+    if let Some(fighter) = objects[PLAYER].fighter {
+        if fighter.hp == fighter.max_hp {
+            message(messages, "You are already at full health.", colors::RED);
+            return UseResult::Cancelled;
+        }
+
+        message(
+            messages,
+            "Your wounds start to close up!",
+            colors::LIGHT_VIOLET,
+        );
+        objects[PLAYER].heal(HEAL_AMOUNT);
+        return UseResult::UsedUp;
+    }
+
+    UseResult::Cancelled
 }
