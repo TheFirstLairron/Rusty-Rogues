@@ -1,9 +1,12 @@
 [package]
-name = "roguelike"
+name = "rusty_rogues"
 version = "0.1.0"
 authors = ["TheFirstLairron"]
 edition = "2018"
 
 [dependencies]
-tcod = "0.13"
-rand = "0.3.9"
+tcod = { version = "0.12", features = ["serialization"] }
+rand = "0.3"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
