@@ -4,6 +4,8 @@ extern crate serde_derive;
 extern crate rand;
 extern crate tcod;
 
+mod constants;
+
 use tcod::colors::{self, Color};
 use tcod::console::*;
 use tcod::input::Key;
@@ -19,27 +21,15 @@ use std::io::{Read, Write};
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 use rand::Rng;
 
-const PLAYER_NAME: &str = "Player";
-
-const SCREEN_WIDTH: i32 = 80;
-const SCREEN_HEIGHT: i32 = 50;
-const LEVEL_SCREEN_WIDTH: i32 = 40;
-const CHARACTER_SCREEN_WIDTH: i32 = 30;
-
-const INVENTORY_WIDTH: i32 = 50;
-
-const MAP_WIDTH: i32 = 80;
-const MAP_HEIGHT: i32 = 43;
-
 const ROOM_MAX_SIZE: i32 = 10;
 const ROOM_MIN_SIZE: i32 = 6;
 const MAX_ROOMS: i32 = 30;
 
 const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
 const FOV_LIGHT_WALLS: bool = true;
-const TORCH_RADIUS: i32 = 10;
 
 const PLAYER: usize = 0;
+const TORCH_RADIUS: i32 = 10;
 const LEVEL_UP_BASE: i32 = 200;
 const LEVEL_UP_FACTOR: i32 = 150;
 const HEAL_AMOUNT: i32 = 40;
@@ -47,20 +37,8 @@ const LIGHTNING_DAMAGE: i32 = 40;
 const LIGHTNING_RANGE: i32 = 5;
 const CONFUSE_RANGE: i32 = 8;
 const CONFUSE_NUM_TURNS: i32 = 10;
-const FIREBALL_RADIUS: i32 = 3;
-const FIREBALL_DAMAGE: i32 = 25;
 
 const LIMIT_FPS: i32 = 20;
-
-// sizes and coordinates relevant for the GUI
-const BAR_WIDTH: i32 = 20;
-const PANEL_HEIGHT: i32 = 7;
-const PANEL_Y: i32 = SCREEN_HEIGHT - PANEL_HEIGHT;
-
-// Message Log Constants
-const MSG_X: i32 = BAR_WIDTH + 2;
-const MSG_WIDTH: i32 = SCREEN_WIDTH - BAR_WIDTH - 2;
-const MSG_HEIGHT: usize = PANEL_HEIGHT as usize - 1;
 
 const COLOR_DARK_WALL: Color = Color { r: 0, g: 0, b: 100 };
 const COLOR_LIGHT_WALL: Color = Color {
@@ -284,7 +262,7 @@ impl GameObject {
     }
 
     pub fn get_all_equipped(&self, game: &Game) -> Vec<Equipment> {
-        if self.name == PLAYER_NAME {
+        if self.name == constants::player_base::NAME {
             game.inventory
                 .iter()
                 .filter(|item| item.equipment.map_or(false, |e| e.equipped))
@@ -577,7 +555,7 @@ fn handle_keys(
                     "Character Information: \n* Level: {} \n* Experience: {} \n* Experience to level up: {} \n\n* Maximum HP: {} \n* Attack: {} \n* Defense: {} \n",
                     level, fighter.xp, level_up_xp, player.max_hp(game), player.power(game), player.defense(game)
                 );
-                msgbox(&msg, CHARACTER_SCREEN_WIDTH, &mut tcod);
+                msgbox(&msg, constants::gui::CHARACTER_SCREEN_WIDTH, &mut tcod);
             }
 
             DidntTakeTurn
@@ -617,8 +595,8 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
         .compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
 
     // Go through all tiles and set their background color
-    for y in 0..MAP_HEIGHT {
-        for x in 0..MAP_WIDTH {
+    for y in 0..constants::gui::MAP_HEIGHT {
+        for x in 0..constants::gui::MAP_WIDTH {
             // check if it's a wall by checking if it blocks sight
             let visible = tcod.fov.is_in_fov(x, y);
             let is_wall = game.map[x as usize][y as usize].block_sight;
@@ -664,7 +642,7 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     blit(
         &tcod.con,
         (0, 0),
-        (SCREEN_WIDTH, SCREEN_HEIGHT),
+        (constants::gui::SCREEN_WIDTH, constants::gui::SCREEN_HEIGHT),
         &mut tcod.root,
         (0, 0),
         1.0,
@@ -675,10 +653,12 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     tcod.panel.clear();
 
     // Print the game messages, one line at a time
-    let mut y = MSG_HEIGHT as i32;
+    let mut y = constants::gui::MSG_HEIGHT as i32;
 
     for &(ref msg, color) in game.log.iter().rev() {
-        let msg_height = tcod.panel.get_height_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+        let msg_height =
+            tcod.panel
+                .get_height_rect(constants::gui::MSG_X, y, constants::gui::MSG_WIDTH, 0, msg);
         y -= msg_height;
 
         if y < 0 {
@@ -686,7 +666,8 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
         }
 
         tcod.panel.set_default_foreground(color);
-        tcod.panel.print_rect(MSG_X, y, MSG_WIDTH, 0, msg);
+        tcod.panel
+            .print_rect(constants::gui::MSG_X, y, constants::gui::MSG_WIDTH, 0, msg);
     }
 
     // Show the players stats
@@ -698,7 +679,7 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
         &mut tcod.panel,
         1,
         1,
-        BAR_WIDTH,
+        constants::gui::BAR_WIDTH,
         "HP",
         hp,
         max_hp,
@@ -727,9 +708,9 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     blit(
         &tcod.panel,
         (0, 0),
-        (SCREEN_WIDTH, PANEL_HEIGHT),
+        (constants::gui::SCREEN_WIDTH, constants::gui::PANEL_HEIGHT),
         &mut tcod.root,
-        (0, PANEL_Y),
+        (0, constants::gui::PANEL_Y),
         1.0,
         1.0,
     );
@@ -739,7 +720,10 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
 }
 
 fn create_map(objects: &mut Vec<GameObject>, level: u32) -> Map {
-    let mut map = vec![vec![Tile::wall(); MAP_HEIGHT as usize]; MAP_WIDTH as usize];
+    let mut map = vec![
+        vec![Tile::wall(); constants::gui::MAP_HEIGHT as usize];
+        constants::gui::MAP_WIDTH as usize
+    ];
     let mut rooms = vec![];
 
     // Player is the first element, remove everything else.
@@ -752,8 +736,8 @@ fn create_map(objects: &mut Vec<GameObject>, level: u32) -> Map {
         let w = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
         let h = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
 
-        let x = rand::thread_rng().gen_range(0, MAP_WIDTH - w);
-        let y = rand::thread_rng().gen_range(0, MAP_HEIGHT - h);
+        let x = rand::thread_rng().gen_range(0, constants::gui::MAP_WIDTH - w);
+        let y = rand::thread_rng().gen_range(0, constants::gui::MAP_HEIGHT - h);
 
         let new_room = Rect::new(x, y, w, h);
         let failed = rooms
@@ -1272,7 +1256,7 @@ fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, tcod: &mut Tcod)
         0
     } else {
         tcod.root
-            .get_height_rect(0, 0, width, SCREEN_HEIGHT, header)
+            .get_height_rect(0, 0, width, constants::gui::SCREEN_HEIGHT, header)
     };
 
     let height = options.len() as i32 + header_height;
@@ -1305,8 +1289,8 @@ fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, tcod: &mut Tcod)
         );
     }
 
-    let x = SCREEN_WIDTH / 2 - width / 2;
-    let y = SCREEN_HEIGHT / 2 - height / 2;
+    let x = constants::gui::SCREEN_WIDTH / 2 - width / 2;
+    let y = constants::gui::SCREEN_HEIGHT / 2 - height / 2;
     tcod::console::blit(
         &window,
         (0, 0),
@@ -1349,7 +1333,7 @@ fn inventory_menu(game: &Game, header: &str, tcod: &mut Tcod) -> Option<usize> {
             .collect()
     };
 
-    let inventory_index = menu(header, &options, INVENTORY_WIDTH, tcod);
+    let inventory_index = menu(header, &options, constants::gui::INVENTORY_WIDTH, tcod);
 
     // if an item was chosen, return it
     if !game.inventory.is_empty() {
@@ -1453,7 +1437,9 @@ fn target_tile(
         let (x, y) = (tcod.mouse.cx as i32, tcod.mouse.cy as i32);
 
         // accept the target if the played clicked in FOV and in case a range is specified, if it's in that range
-        let in_fov = (x < MAP_WIDTH) && (y < MAP_HEIGHT) && tcod.fov.is_in_fov(x, y);
+        let in_fov = (x < constants::gui::MAP_WIDTH)
+            && (y < constants::gui::MAP_HEIGHT)
+            && tcod.fov.is_in_fov(x, y);
         let in_range = max_range.map_or(true, |range| objects[PLAYER].distance(x, y) <= range);
 
         if tcod.mouse.lbutton_pressed && in_fov && in_range {
@@ -1580,37 +1566,28 @@ fn cast_fireball(
     mut game: &mut Game,
     tcod: &mut Tcod,
 ) -> UseResult {
+    use constants::consumables::scrolls::fireball;
     // Ask the player for a target tile to throw a fireball at
-    game.log.add(
-        "Left-click a target tile for the fireball, or right-click to cancel.",
-        colors::LIGHT_CYAN,
-    );
+    game.log
+        .add(fireball::INSTRUCTIONS, fireball::INSTRUCTION_COLOR);
 
     let (x, y) = match target_tile(tcod, objects, game, None) {
         Some(tile_pos) => tile_pos,
         None => return UseResult::Cancelled,
     };
 
-    game.log.add(
-        format!(
-            "The fireball explodes, burning everything within {} tiles!",
-            FIREBALL_RADIUS
-        ),
-        colors::ORANGE,
-    );
+    game.log
+        .add(fireball::create_radius_message(), fireball::RADIUS_COLOR);
 
     let mut xp_to_gain = 0;
     for (id, obj) in objects.iter_mut().enumerate() {
-        if obj.distance(x, y) <= FIREBALL_RADIUS as f32 && obj.fighter.is_some() {
+        if obj.distance(x, y) <= fireball::RADIUS as f32 && obj.fighter.is_some() {
             game.log.add(
-                format!(
-                    "The {} gets burned for {} hit points.",
-                    obj.name, FIREBALL_DAMAGE
-                ),
-                colors::ORANGE,
+                fireball::create_damage_message(&obj.name),
+                fireball::DAMAGE_COLOR,
             );
 
-            if let Some(xp) = obj.take_damage(FIREBALL_DAMAGE, &mut game) {
+            if let Some(xp) = obj.take_damage(fireball::DAMAGE, &mut game) {
                 // can't alter player in this loop, and don't wanna give them xp for killing themselves.
                 // so we track it outside the loop and then award it after
                 if id != PLAYER {
@@ -1674,17 +1651,17 @@ fn from_dungeon_level(table: &[Transition], level: u32) -> u32 {
 
 /// Advance to the next level
 fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
-    game.log.add(
-        "You take a moment to rest and recover your strength.",
-        colors::VIOLET,
-    );
+    use constants::gui::menus::next_level;
+
+    game.log
+        .add(next_level::REST_LOG_MESSAGE, next_level::REST_COLOR);
     let player = &mut objects[PLAYER];
     let heal_hp = player.max_hp(game) / 2;
     player.heal(heal_hp, game);
 
     game.log.add(
-        "After a rare moment of peace, you descend deeper into the heart of the dungeon.",
-        colors::RED,
+        next_level::NEXT_LEVEL_LOG_MESSAGE,
+        next_level::NEXT_LEVEL_COLOR,
     );
     game.dungeon_level += 1;
     game.map = create_map(objects, game.dungeon_level);
@@ -1692,6 +1669,8 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
 }
 
 fn level_up(objects: &mut [GameObject], game: &mut Game, mut tcod: &mut Tcod) {
+    use constants::gui::menus::level_up;
+
     let player = &mut objects[PLAYER];
     let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
 
@@ -1699,26 +1678,21 @@ fn level_up(objects: &mut [GameObject], game: &mut Game, mut tcod: &mut Tcod) {
     if player.fighter.as_ref().map_or(0, |f| f.xp) >= level_up_xp {
         // level up!
         player.level += 1;
-        game.log.add(
-            format!(
-                "Your battle skills grow stronger! You reached level {}",
-                player.level
-            ),
-            colors::YELLOW,
-        );
+        game.log
+            .add(level_up::create_log_message(player.level), colors::YELLOW);
 
         let mut fighter = player.fighter.as_mut().unwrap();
         let mut choice = None;
 
         while choice.is_none() {
             choice = menu(
-                "Level up! Choose a stat to raise:\n",
+                level_up::TITLE,
                 &[
-                    format!("Constitution (+20 HP, from {})", fighter.base_max_hp),
-                    format!("Strength (+1 attack, from {})", fighter.base_power),
-                    format!("Agility (+1 defense, from {})", fighter.base_defense),
+                    level_up::create_constitution_option(fighter.base_max_hp),
+                    level_up::create_stength_option(fighter.base_power),
+                    level_up::create_agility_option(fighter.base_defense),
                 ],
-                LEVEL_SCREEN_WIDTH,
+                level_up::WIDTH,
                 &mut tcod,
             );
         }
@@ -1741,7 +1715,15 @@ fn level_up(objects: &mut [GameObject], game: &mut Game, mut tcod: &mut Tcod) {
 }
 
 fn new_game(tcod: &mut Tcod) -> (Vec<GameObject>, Game) {
-    let mut player = GameObject::new(0, 0, '@', PLAYER_NAME, colors::WHITE, true);
+    use constants::player_base;
+    let mut player = GameObject::new(
+        0,
+        0,
+        player_base::SYMBOL,
+        player_base::NAME,
+        player_base::COLOR,
+        true,
+    );
     player.alive = true;
     player.fighter = Some(Fighter {
         base_max_hp: 100,
@@ -1761,30 +1743,28 @@ fn new_game(tcod: &mut Tcod) -> (Vec<GameObject>, Game) {
         dungeon_level: 1,
     };
 
-    let mut dagger = GameObject::new(0, 0, '-', "Dagger", colors::SKY, false);
+    use constants::gear::*;
+    let mut dagger = GameObject::new(0, 0, dagger::SYMBOL, dagger::NAME, dagger::COLOR, false);
     dagger.item = Some(Item::Sword);
     dagger.equipment = Some(Equipment {
         equipped: true,
         slot: Slot::LeftHand,
-        hp_bonus: 0,
-        defense_bonus: 0,
-        power_bonus: 2,
+        hp_bonus: dagger::HP_BONUS,
+        defense_bonus: dagger::DEFENSE_BONUS,
+        power_bonus: dagger::POWER_BONUS,
     });
     game.inventory.push(dagger);
 
     initialize_fov(&game, tcod);
 
-    game.log.add(
-        "Welcome stranger! Prepare to perish in the Tombs of the Ancient Kings.",
-        colors::RED,
-    );
+    game.log.add(constants::gui::WELCOME_MESSAGE, colors::RED);
 
     (game_objects, game)
 }
 
 fn initialize_fov(game: &Game, tcod: &mut Tcod) {
-    for y in 0..MAP_HEIGHT {
-        for x in 0..MAP_WIDTH {
+    for y in 0..constants::gui::MAP_HEIGHT {
+        for x in 0..constants::gui::MAP_WIDTH {
             tcod.fov.set(
                 x,
                 y,
@@ -1823,8 +1803,6 @@ fn play_game(mut game_objects: Vec<GameObject>, mut game: &mut Game, mut tcod: &
             break;
         }
 
-        level_up(&mut game_objects, game, tcod);
-
         if game_objects[PLAYER].alive && action != PlayerAction::DidntTakeTurn {
             for id in 0..game_objects.len() {
                 if game_objects[id].ai.is_some() {
@@ -1832,11 +1810,14 @@ fn play_game(mut game_objects: Vec<GameObject>, mut game: &mut Game, mut tcod: &
                 }
             }
         }
+
+        level_up(&mut game_objects, game, tcod);
     }
 }
 
 fn main_menu(mut tcod: &mut Tcod) {
-    let img = tcod::image::Image::from_file("menu_background.png")
+    use constants::gui::menus::*;
+    let img = tcod::image::Image::from_file(main::IMAGE_PATH)
         .ok()
         .expect("Background image not found");
 
@@ -1846,23 +1827,28 @@ fn main_menu(mut tcod: &mut Tcod) {
 
         tcod.root.set_default_foreground(colors::LIGHT_YELLOW);
         tcod.root.print_ex(
-            SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT / 2 - 4,
+            constants::gui::SCREEN_WIDTH / 2,
+            constants::gui::SCREEN_HEIGHT / 2 - 4,
             BackgroundFlag::None,
             TextAlignment::Center,
-            "TOMBS OF THE ANCIENT KINGS",
+            constants::GAME_TITLE,
         );
         tcod.root.print_ex(
-            SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT - 2,
+            constants::gui::SCREEN_WIDTH / 2,
+            constants::gui::SCREEN_HEIGHT - 2,
             BackgroundFlag::None,
             TextAlignment::Center,
-            "By Zach",
+            main::AUTHOR_LINE,
         );
 
         // show options and wait for the players choice
-        let choices = &["Play a new game", "Continue last game", "Quit"];
-        let choice = menu("", choices, 24, &mut tcod);
+        let choices = &[main::NEW_GAME, main::CONTINUE, main::QUIT];
+        let choice = menu(
+            main::MENU_NO_HEADER,
+            choices,
+            main::START_MENU_WIDTH,
+            &mut tcod,
+        );
 
         match choice {
             Some(0) => {
@@ -1896,14 +1882,14 @@ fn msgbox(text: &str, width: i32, mut tcod: &mut Tcod) {
 
 fn save_game(objects: &[GameObject], game: &Game) -> Result<(), Box<Error>> {
     let save_data = serde_json::to_string(&(objects, game))?;
-    let mut file = File::create("savegame")?;
+    let mut file = File::create(constants::SAVE_FILE_NAME)?;
     file.write_all(save_data.as_bytes())?;
     Ok(())
 }
 
 fn load_game() -> Result<(Vec<GameObject>, Game), Box<Error>> {
     let mut json_save_state = String::new();
-    let mut file = File::open("savegame")?;
+    let mut file = File::open(constants::SAVE_FILE_NAME)?;
     file.read_to_string(&mut json_save_state)?;
     let result = serde_json::from_str::<(Vec<GameObject>, Game)>(&json_save_state)?;
     Ok(result)
@@ -1911,19 +1897,19 @@ fn load_game() -> Result<(Vec<GameObject>, Game), Box<Error>> {
 
 fn main() {
     let root = Root::initializer()
-        .font("arial10x10.png", FontLayout::Tcod)
+        .font(constants::FONT_PATH, FontLayout::Tcod)
         .font_type(FontType::Greyscale)
-        .size(SCREEN_WIDTH, SCREEN_HEIGHT)
-        .title("Rusty Rogues")
+        .size(constants::gui::SCREEN_WIDTH, constants::gui::SCREEN_HEIGHT)
+        .title(constants::gui::menus::main::GAME_CONSOLE_HEADER)
         .init();
 
     tcod::system::set_fps(LIMIT_FPS);
 
     let mut tcod = Tcod {
         root,
-        con: Offscreen::new(MAP_WIDTH, MAP_HEIGHT),
-        panel: Offscreen::new(SCREEN_WIDTH, PANEL_HEIGHT),
-        fov: FovMap::new(MAP_WIDTH, MAP_HEIGHT),
+        con: Offscreen::new(constants::gui::MAP_WIDTH, constants::gui::MAP_HEIGHT),
+        panel: Offscreen::new(constants::gui::SCREEN_WIDTH, constants::gui::PANEL_HEIGHT),
+        fov: FovMap::new(constants::gui::MAP_WIDTH, constants::gui::MAP_HEIGHT),
         mouse: Default::default(),
     };
 
