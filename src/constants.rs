@@ -32,7 +32,7 @@ pub mod gui {
         pub mod main {
             pub const MENU_NO_HEADER: &str = "";
             pub const GAME_CONSOLE_HEADER: &str = "Rusty Rogues";
-            pub const AUTHOR_LINE: &str = "By Zach";
+            pub const AUTHOR_LINE: &str = "By Serena";
             pub const NEW_GAME: &str = "Play a new game";
             pub const CONTINUE: &str = "Continue last game";
             pub const QUIT: &str = "Quit";
@@ -72,7 +72,6 @@ pub mod gui {
                 "After a rare moment of peace, you descend deeper into the heart of the dungeon.";
             pub const REST_COLOR: Color = colors::VIOLET;
             pub const NEXT_LEVEL_COLOR: Color = colors::RED;
-
         }
 
         pub mod character_sheet {}
@@ -116,8 +115,7 @@ pub mod consumables {
     pub mod scrolls {
         pub mod lightning {}
 
-        pub mod confusion {
-        }
+        pub mod confusion {}
 
         pub mod fireball {
             use tcod::colors::{self, Color};
@@ -128,7 +126,8 @@ pub mod consumables {
             pub const DAMAGE: i32 = 25;
             pub const DAMAGE_COLOR: Color = colors::ORANGE;
 
-            pub const INSTRUCTIONS: &str = "Left-click a target tile for the fireball, or right-click to cancel.";
+            pub const INSTRUCTIONS: &str =
+                "Left-click a target tile for the fireball, or right-click to cancel.";
             pub const INSTRUCTION_COLOR: Color = colors::LIGHT_CYAN;
 
             pub fn create_radius_message() -> String {

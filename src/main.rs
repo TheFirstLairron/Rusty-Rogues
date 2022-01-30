@@ -96,12 +96,12 @@ impl GameObject {
         }
     }
 
-    pub fn draw(&self, con: &mut Console) {
+    pub fn draw(&self, con: &mut dyn Console) {
         con.set_default_foreground(self.color);
         con.put_char(self.x, self.y, self.char, BackgroundFlag::None);
     }
 
-    pub fn clear(&self, con: &mut Console) {
+    pub fn clear(&self, con: &mut dyn Console) {
         con.put_char(self.x, self.y, ' ', BackgroundFlag::None);
     }
 
@@ -1419,8 +1419,6 @@ fn target_tile(
     mut game: &mut Game,
     max_range: Option<f32>,
 ) -> Option<(i32, i32)> {
-    use tcod::input::KeyCode::Escape;
-
     loop {
         // render the screen. This erases the inventory and shows the names opf objects under the mouse.
         tcod.root.flush();
@@ -1880,14 +1878,14 @@ fn msgbox(text: &str, width: i32, mut tcod: &mut Tcod) {
     menu(text, options, width, &mut tcod);
 }
 
-fn save_game(objects: &[GameObject], game: &Game) -> Result<(), Box<Error>> {
+fn save_game(objects: &[GameObject], game: &Game) -> Result<(), Box<dyn Error>> {
     let save_data = serde_json::to_string(&(objects, game))?;
     let mut file = File::create(constants::SAVE_FILE_NAME)?;
     file.write_all(save_data.as_bytes())?;
     Ok(())
 }
 
-fn load_game() -> Result<(Vec<GameObject>, Game), Box<Error>> {
+fn load_game() -> Result<(Vec<GameObject>, Game), Box<dyn Error>> {
     let mut json_save_state = String::new();
     let mut file = File::open(constants::SAVE_FILE_NAME)?;
     file.read_to_string(&mut json_save_state)?;

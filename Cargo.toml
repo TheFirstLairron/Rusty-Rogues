@@ -1,8 +1,8 @@
 [package]
 name = "rusty_rogues"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["TheFirstLairron"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 tcod = { version = "0.12", features = ["serialization"] }
