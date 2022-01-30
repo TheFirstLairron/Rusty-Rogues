@@ -1,7 +1,8 @@
 use tcod::colors::{self, Color};
 use tcod::console::*;
 
-use super::constants;
+use crate::constants;
+use crate::items::{Item};
 
 pub type Map = Vec<Vec<Tile>>;
 pub type Messages = Vec<(String, Color)>;
@@ -270,16 +271,6 @@ pub enum Ai {
         previous_ai: Box<Ai>,
         num_turns: i32,
     },
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Item {
-    Heal,
-    Lightning,
-    Confuse,
-    Fireball,
-    Sword,
-    Shield,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

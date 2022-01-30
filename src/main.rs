@@ -12,6 +12,7 @@ mod map;
 mod render;
 mod spell_effects;
 mod tcod_container;
+mod persistence;
 
 use tcod::colors;
 use tcod::console::*;
@@ -21,24 +22,13 @@ use tcod::input::{self, Event};
 use tcod::map::Map as FovMap;
 
 use std::cmp;
-use std::error::Error;
-use std::fs::File;
-use std::io::{Read, Write};
 
 use rand::Rng;
 
 use constants::game as GameConstants;
 use constants::gui as GuiConstants;
 
-use game_objects::Ai;
-use game_objects::DeathCallback;
-use game_objects::Equipment;
-use game_objects::Fighter;
-use game_objects::Game;
-use game_objects::GameObject;
-use game_objects::Item;
-use game_objects::MessageLog;
-use game_objects::Slot;
+use game_objects::{Game, GameObject, Fighter, Equipment, Slot, Ai, DeathCallback, MessageLog};
 
 use map::create_map;
 
@@ -104,34 +94,34 @@ fn handle_keys(
             });
 
             if let Some(item_id) = item_id {
-                pick_item_up(item_id, objects, game);
+                items::pick_item_up(item_id, objects, game);
             }
 
             DidntTakeTurn
         }
         (Key { printable: 'i', .. }, true) => {
             // show the inventory: if an item is selected, use it
-            let inventory_index = inventory_menu(
+            let inventory_index = render::inventory_menu(
                 game,
                 "Press the key next to an item to use it, or any other to cancel. \n",
                 &mut tcod,
             );
 
             if let Some(inventory_index) = inventory_index {
-                use_item(inventory_index, objects, tcod, game)
+                items::use_item(inventory_index, objects, tcod, game)
             }
 
             DidntTakeTurn
         }
         (Key { printable: 'd', .. }, true) => {
             // show the inventory; if an item is selected, drop it
-            let inventory_index = inventory_menu(
+            let inventory_index = render::inventory_menu(
                 game,
                 "Press the key next to an item to drop it, or any other to cancel.\n",
                 &mut tcod,
             );
             if let Some(inventory_index) = inventory_index {
-                drop_item(inventory_index, &mut game, objects);
+                items::drop_item(inventory_index, &mut game, objects);
             }
             DidntTakeTurn
         }
@@ -146,7 +136,7 @@ fn handle_keys(
                     "Character Information: \n* Level: {} \n* Experience: {} \n* Experience to level up: {} \n\n* Maximum HP: {} \n* Attack: {} \n* Defense: {} \n",
                     level, fighter.xp, level_up_xp, player.max_hp(game), player.power(game), player.defense(game)
                 );
-                msgbox(&msg, GuiConstants::CHARACTER_SCREEN_WIDTH, &mut tcod);
+                render::msgbox(&msg, GuiConstants::CHARACTER_SCREEN_WIDTH, &mut tcod);
             }
 
             DidntTakeTurn
@@ -219,34 +209,6 @@ fn player_move_or_attack(dx: i32, dy: i32, mut game: &mut Game, objects: &mut [G
             player.attack(target, &mut game);
         }
         None => move_by(GameConstants::PLAYER, dx, dy, &mut game, objects),
-    }
-}
-
-fn pick_item_up(object_id: usize, objects: &mut Vec<GameObject>, game: &mut Game) {
-    if game.inventory.len() >= 26 {
-        game.log.add(
-            format!(
-                "Your inventory is full, cannot pick up {}",
-                objects[object_id].name
-            ),
-            colors::RED,
-        );
-    } else {
-        let item = objects.swap_remove(object_id);
-
-        game.log
-            .add(format!("You picked up a {}!", item.name), colors::GREEN);
-
-        let index = game.inventory.len();
-        let slot = item.equipment.map(|e| e.slot);
-        game.inventory.push(item);
-
-        // Auto-equip if slot is open
-        if let Some(slot) = slot {
-            if get_equipped_in_slot(slot, game).is_none() {
-                game.inventory[index].equip(&mut game.log);
-            }
-        }
     }
 }
 
@@ -336,191 +298,6 @@ fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut
     }
 }
 
-fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, tcod: &mut Tcod) -> Option<usize> {
-    assert!(
-        options.len() <= 26,
-        "Cannot have a menu with more than 26 options"
-    );
-
-    // calculate total height for the header (after auto-wrap) and one line per option
-    let header_height = if header.is_empty() {
-        0
-    } else {
-        tcod.root
-            .get_height_rect(0, 0, width, GuiConstants::SCREEN_HEIGHT, header)
-    };
-
-    let height = options.len() as i32 + header_height;
-
-    let mut window = Offscreen::new(width, height);
-
-    // print the header, with auto-wrap;
-    window.set_default_foreground(colors::WHITE);
-    window.print_rect_ex(
-        0,
-        0,
-        width,
-        height,
-        BackgroundFlag::None,
-        TextAlignment::Left,
-        header,
-    );
-
-    // print all the options
-    for (index, option_text) in options.iter().enumerate() {
-        // essentially ASCII math, probably a better way of approaching this entire menu
-        let menu_letter = (b'a' + index as u8) as char;
-        let text = format!("({}) {}", menu_letter, option_text.as_ref());
-        window.print_ex(
-            0,
-            header_height + index as i32,
-            BackgroundFlag::None,
-            TextAlignment::Left,
-            text,
-        );
-    }
-
-    let x = GuiConstants::SCREEN_WIDTH / 2 - width / 2;
-    let y = GuiConstants::SCREEN_HEIGHT / 2 - height / 2;
-    tcod::console::blit(
-        &window,
-        (0, 0),
-        (width, height),
-        &mut tcod.root,
-        (x, y),
-        1.0,
-        0.7,
-    );
-
-    // present the root console to the player and wait for a key press
-    tcod.root.flush();
-    let key = tcod.root.wait_for_keypress(true);
-
-    // convert the ASCII code to an index; if it corresponds to an option, return it
-    if key.printable.is_alphabetic() {
-        let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
-        if index < options.len() {
-            Some(index)
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
-
-fn inventory_menu(game: &Game, header: &str, tcod: &mut Tcod) -> Option<usize> {
-    let options = if game.inventory.is_empty() {
-        vec!["Inventory is empty.".into()]
-    } else {
-        game.inventory
-            .iter()
-            .map(|item| match item.equipment {
-                Some(equipment) if equipment.equipped => {
-                    format!("{} (on {})", item.name, equipment.slot)
-                }
-                _ => item.name.clone(),
-            })
-            .collect()
-    };
-
-    let inventory_index = menu(header, &options, GuiConstants::INVENTORY_WIDTH, tcod);
-
-    // if an item was chosen, return it
-    if !game.inventory.is_empty() {
-        inventory_index
-    } else {
-        None
-    }
-}
-
-fn use_item(inventory_id: usize, objects: &mut [GameObject], tcod: &mut Tcod, game: &mut Game) {
-    use Item::*;
-
-    // just call the "use_function" if it is defined
-    if let Some(item) = game.inventory[inventory_id].item {
-        let on_use = match item {
-            Heal => spell_effects::heal::cast_heal,
-            Lightning => spell_effects::lightning::cast_lightning,
-            Confuse => spell_effects::confuse::cast_confuse,
-            Fireball => spell_effects::fireball::cast_fireball,
-            Sword => toggle_equipment,
-            Shield => toggle_equipment,
-        };
-
-        match on_use(inventory_id, objects, game, tcod) {
-            items::UseResult::UsedUp => {
-                // destroy after use, unless it was cancelled for some reason
-                game.inventory.remove(inventory_id);
-            }
-            items::UseResult::UsedAndKept => {} // do nothing
-            items::UseResult::Cancelled => {
-                game.log.add("Cancelled", colors::WHITE);
-            }
-        }
-    } else {
-        game.log.add(
-            format!("The {} cannot be used.", game.inventory[inventory_id].name),
-            colors::WHITE,
-        );
-    }
-}
-
-fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<GameObject>) {
-    let mut item = game.inventory.remove(inventory_id);
-
-    if item.equipment.is_some() {
-        item.dequip(&mut game.log);
-    }
-
-    item.set_pos(
-        objects[GameConstants::PLAYER].x,
-        objects[GameConstants::PLAYER].y,
-    );
-
-    game.log
-        .add(format!("You dropped a {}", item.name), colors::YELLOW);
-
-    objects.push(item);
-}
-
-fn toggle_equipment(
-    inventory_id: usize,
-    _objects: &mut [GameObject],
-    game: &mut Game,
-    _tcod: &mut Tcod,
-) -> items::UseResult {
-    let equipment = match game.inventory[inventory_id].equipment {
-        Some(equipment) => equipment,
-        None => return items::UseResult::Cancelled,
-    };
-
-    if equipment.equipped {
-        game.inventory[inventory_id].dequip(&mut game.log);
-    } else {
-        if let Some(old_equipment) = get_equipped_in_slot(equipment.slot, game) {
-            game.inventory[old_equipment].dequip(&mut game.log);
-        }
-
-        game.inventory[inventory_id].equip(&mut game.log);
-    }
-
-    items::UseResult::UsedAndKept
-}
-
-fn get_equipped_in_slot(slot: Slot, game: &Game) -> Option<usize> {
-    for (inventory_id, item) in game.inventory.iter().enumerate() {
-        if item
-            .equipment
-            .as_ref()
-            .map_or(false, |e| e.equipped && e.slot == slot)
-        {
-            return Some(inventory_id);
-        }
-    }
-    None
-}
-
 /// Advance to the next level
 fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
     use GuiConstants::menus::next_level;
@@ -557,7 +334,7 @@ fn level_up(objects: &mut [GameObject], game: &mut Game, mut tcod: &mut Tcod) {
         let mut choice = None;
 
         while choice.is_none() {
-            choice = menu(
+            choice = render::menu(
                 level_up::TITLE,
                 &[
                     level_up::create_constitution_option(fighter.base_max_hp),
@@ -617,7 +394,7 @@ fn new_game(tcod: &mut Tcod) -> (Vec<GameObject>, Game) {
 
     use constants::gear::*;
     let mut dagger = GameObject::new(0, 0, dagger::SYMBOL, dagger::NAME, dagger::COLOR, false);
-    dagger.item = Some(Item::Sword);
+    dagger.item = Some(items::Item::Sword);
     dagger.equipment = Some(Equipment {
         equipped: true,
         slot: Slot::LeftHand,
@@ -671,7 +448,7 @@ fn play_game(mut game_objects: Vec<GameObject>, mut game: &mut Game, mut tcod: &
         let action = handle_keys(key, &mut tcod, &mut game, &mut game_objects);
 
         if action == PlayerAction::Exit {
-            save_game(&game_objects, game).unwrap();
+            persistence::save_game(&game_objects, game).unwrap();
             break;
         }
 
@@ -715,7 +492,7 @@ fn main_menu(mut tcod: &mut Tcod) {
 
         // show options and wait for the players choice
         let choices = &[main::NEW_GAME, main::CONTINUE, main::QUIT];
-        let choice = menu(
+        let choice = render::menu(
             main::MENU_NO_HEADER,
             choices,
             main::START_MENU_WIDTH,
@@ -728,13 +505,13 @@ fn main_menu(mut tcod: &mut Tcod) {
                 let (objects, mut game) = new_game(tcod);
                 play_game(objects, &mut game, tcod);
             }
-            Some(1) => match load_game() {
+            Some(1) => match persistence::load_game() {
                 Ok((objects, mut game)) => {
                     initialize_fov(&game, tcod);
                     play_game(objects, &mut game, tcod);
                 }
                 Err(_e) => {
-                    msgbox("\nNo saved game to load.\n", 24, &mut tcod);
+                    render::msgbox("\nNo saved game to load.\n", 24, &mut tcod);
                     continue;
                 }
             },
@@ -745,26 +522,6 @@ fn main_menu(mut tcod: &mut Tcod) {
             _ => {}
         }
     }
-}
-
-fn msgbox(text: &str, width: i32, mut tcod: &mut Tcod) {
-    let options: &[&str] = &[];
-    menu(text, options, width, &mut tcod);
-}
-
-fn save_game(objects: &[GameObject], game: &Game) -> Result<(), Box<dyn Error>> {
-    let save_data = serde_json::to_string(&(objects, game))?;
-    let mut file = File::create(constants::SAVE_FILE_NAME)?;
-    file.write_all(save_data.as_bytes())?;
-    Ok(())
-}
-
-fn load_game() -> Result<(Vec<GameObject>, Game), Box<dyn Error>> {
-    let mut json_save_state = String::new();
-    let mut file = File::open(constants::SAVE_FILE_NAME)?;
-    file.read_to_string(&mut json_save_state)?;
-    let result = serde_json::from_str::<(Vec<GameObject>, Game)>(&json_save_state)?;
-    Ok(result)
 }
 
 fn main() {

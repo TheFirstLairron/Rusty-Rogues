@@ -56,6 +56,109 @@ fn render_bar(
     );
 }
 
+pub fn msgbox(text: &str, width: i32, mut tcod: &mut Tcod) {
+    let options: &[&str] = &[];
+    menu(text, options, width, &mut tcod);
+}
+
+pub fn menu<T: AsRef<str>>(header: &str, options: &[T], width: i32, tcod: &mut Tcod) -> Option<usize> {
+    assert!(
+        options.len() <= 26,
+        "Cannot have a menu with more than 26 options"
+    );
+
+    // calculate total height for the header (after auto-wrap) and one line per option
+    let header_height = if header.is_empty() {
+        0
+    } else {
+        tcod.root
+            .get_height_rect(0, 0, width, GuiConstants::SCREEN_HEIGHT, header)
+    };
+
+    let height = options.len() as i32 + header_height;
+
+    let mut window = Offscreen::new(width, height);
+
+    // print the header, with auto-wrap;
+    window.set_default_foreground(colors::WHITE);
+    window.print_rect_ex(
+        0,
+        0,
+        width,
+        height,
+        BackgroundFlag::None,
+        TextAlignment::Left,
+        header,
+    );
+
+    // print all the options
+    for (index, option_text) in options.iter().enumerate() {
+        // essentially ASCII math, probably a better way of approaching this entire menu
+        let menu_letter = (b'a' + index as u8) as char;
+        let text = format!("({}) {}", menu_letter, option_text.as_ref());
+        window.print_ex(
+            0,
+            header_height + index as i32,
+            BackgroundFlag::None,
+            TextAlignment::Left,
+            text,
+        );
+    }
+
+    let x = GuiConstants::SCREEN_WIDTH / 2 - width / 2;
+    let y = GuiConstants::SCREEN_HEIGHT / 2 - height / 2;
+    tcod::console::blit(
+        &window,
+        (0, 0),
+        (width, height),
+        &mut tcod.root,
+        (x, y),
+        1.0,
+        0.7,
+    );
+
+    // present the root console to the player and wait for a key press
+    tcod.root.flush();
+    let key = tcod.root.wait_for_keypress(true);
+
+    // convert the ASCII code to an index; if it corresponds to an option, return it
+    if key.printable.is_alphabetic() {
+        let index = key.printable.to_ascii_lowercase() as usize - 'a' as usize;
+        if index < options.len() {
+            Some(index)
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+pub fn inventory_menu(game: &Game, header: &str, tcod: &mut Tcod) -> Option<usize> {
+    let options = if game.inventory.is_empty() {
+        vec!["Inventory is empty.".into()]
+    } else {
+        game.inventory
+            .iter()
+            .map(|item| match item.equipment {
+                Some(equipment) if equipment.equipped => {
+                    format!("{} (on {})", item.name, equipment.slot)
+                }
+                _ => item.name.clone(),
+            })
+            .collect()
+    };
+
+    let inventory_index = menu(header, &options, GuiConstants::INVENTORY_WIDTH, tcod);
+
+    // if an item was chosen, return it
+    if !game.inventory.is_empty() {
+        inventory_index
+    } else {
+        None
+    }
+}
+
 pub fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     // originally checked if user moved, but that caused a bug: every action was delayed by one turn. No observable adverse effects from removing the check.
     let player = &game_objects[GameConstants::PLAYER];

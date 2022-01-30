@@ -9,8 +9,9 @@ use tcod::input::{self, Event};
 use crate::constants;
 use crate::enemies;
 use crate::game_objects::{
-    Ai, DeathCallback, Equipment, Fighter, Game, GameObject, Item, Map, Slot, Tile,
+    Ai, DeathCallback, Equipment, Fighter, Game, GameObject, Map, Slot, Tile,
 };
+use crate::items::Item;
 use crate::render;
 use crate::tcod_container;
 
