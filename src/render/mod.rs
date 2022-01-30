@@ -1,14 +1,14 @@
 extern crate tcod;
 
-use tcod::console::*;
 use tcod::colors::{self, Color};
-use tcod::input::{Mouse};
+use tcod::console::*;
+use tcod::input::Mouse;
 use tcod::map::Map as FovMap;
 
-use crate::game_objects::{ GameObject, Game, };
-use crate::tcod_container::Tcod as Tcod;
 use crate::constants::game as GameConstants;
 use crate::constants::gui as GuiConstants;
+use crate::game_objects::{Game, GameObject};
+use crate::tcod_container::Tcod;
 
 fn get_names_under_mouse(mouse: Mouse, objects: &[GameObject], fov_map: &FovMap) -> String {
     let (x, y) = (mouse.cx as i32, mouse.cy as i32);
@@ -59,8 +59,13 @@ fn render_bar(
 pub fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     // originally checked if user moved, but that caused a bug: every action was delayed by one turn. No observable adverse effects from removing the check.
     let player = &game_objects[GameConstants::PLAYER];
-    tcod.fov
-        .compute_fov(player.x, player.y, GameConstants::TORCH_RADIUS, GameConstants::FOV_LIGHT_WALLS, GameConstants::FOV_ALGO);
+    tcod.fov.compute_fov(
+        player.x,
+        player.y,
+        GameConstants::TORCH_RADIUS,
+        GameConstants::FOV_LIGHT_WALLS,
+        GameConstants::FOV_ALGO,
+    );
 
     // Go through all tiles and set their background color
     for y in 0..GuiConstants::MAP_HEIGHT {

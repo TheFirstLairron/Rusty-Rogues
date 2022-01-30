@@ -1,21 +1,23 @@
-use std::cmp;
-use rand::Rng;
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
+use rand::Rng;
+use std::cmp;
 
 use tcod::colors;
 use tcod::input::KeyCode::*;
 use tcod::input::{self, Event};
 
-use crate::game_objects::{GameObject, Tile, Map, Fighter, DeathCallback, Ai, Item, Equipment, Slot, Game};
 use crate::constants;
 use crate::enemies;
-use crate::tcod_container;
+use crate::game_objects::{
+    Ai, DeathCallback, Equipment, Fighter, Game, GameObject, Item, Map, Slot, Tile,
+};
 use crate::render;
+use crate::tcod_container;
 
 use constants::game as GameConstants;
 use constants::gui as GuiConstants;
-use enemies::Enemies as Enemies;
-use tcod_container::Tcod as Tcod;
+use enemies::Enemies;
+use tcod_container::Tcod;
 
 #[derive(Clone, Copy, Debug)]
 struct Rect {
@@ -171,7 +173,9 @@ pub fn target_tile(
         let in_fov = (x < GuiConstants::MAP_WIDTH)
             && (y < GuiConstants::MAP_HEIGHT)
             && tcod.fov.is_in_fov(x, y);
-        let in_range = max_range.map_or(true, |range| objects[GameConstants::PLAYER].distance(x, y) <= range);
+        let in_range = max_range.map_or(true, |range| {
+            objects[GameConstants::PLAYER].distance(x, y) <= range
+        });
 
         if tcod.mouse.lbutton_pressed && in_fov && in_range {
             return Some((x, y));
@@ -184,7 +188,6 @@ pub fn target_tile(
     }
 }
 
-
 pub fn create_map(objects: &mut Vec<GameObject>, level: u32) -> Map {
     let mut map = vec![
         vec![Tile::wall(); GuiConstants::MAP_HEIGHT as usize];
@@ -194,13 +197,22 @@ pub fn create_map(objects: &mut Vec<GameObject>, level: u32) -> Map {
 
     // Player is the first element, remove everything else.
     // NOTE: works only when the player is the first object!
-    assert_eq!(&objects[GameConstants::PLAYER] as *const _, &objects[0] as *const _);
+    assert_eq!(
+        &objects[GameConstants::PLAYER] as *const _,
+        &objects[0] as *const _
+    );
     objects.truncate(1);
 
     for _ in 0..GameConstants::MAX_ROOMS {
         // Random width and height
-        let w = rand::thread_rng().gen_range(GameConstants::ROOM_MIN_SIZE, GameConstants::ROOM_MAX_SIZE + 1);
-        let h = rand::thread_rng().gen_range(GameConstants::ROOM_MIN_SIZE, GameConstants::ROOM_MAX_SIZE + 1);
+        let w = rand::thread_rng().gen_range(
+            GameConstants::ROOM_MIN_SIZE,
+            GameConstants::ROOM_MAX_SIZE + 1,
+        );
+        let h = rand::thread_rng().gen_range(
+            GameConstants::ROOM_MIN_SIZE,
+            GameConstants::ROOM_MAX_SIZE + 1,
+        );
 
         let x = rand::thread_rng().gen_range(0, GuiConstants::MAP_WIDTH - w);
         let y = rand::thread_rng().gen_range(0, GuiConstants::MAP_HEIGHT - h);

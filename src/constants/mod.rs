@@ -5,8 +5,8 @@ pub const FONT_PATH: &str = "arial10x10.png";
 pub const SAVE_FILE_NAME: &str = "savegame";
 
 pub mod game {
-    use tcod::map::FovAlgorithm;
     use tcod::colors::Color;
+    use tcod::map::FovAlgorithm;
 
     pub const ROOM_MAX_SIZE: i32 = 10;
     pub const ROOM_MIN_SIZE: i32 = 6;

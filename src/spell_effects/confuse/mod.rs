@@ -1,13 +1,12 @@
 use tcod::colors;
 
-use crate::tcod_container;
-use crate::game_objects::{ GameObject, Game, MessageLog, Ai };
 use crate::constants::game as GameConstants;
-use crate::items::{ UseResult };
+use crate::game_objects::{Ai, Game, GameObject, MessageLog};
+use crate::items::UseResult;
 use crate::map;
+use crate::tcod_container;
 
-use tcod_container::Tcod as Tcod;
-
+use tcod_container::Tcod;
 
 pub fn cast_confuse(
     _inventory_id: usize,
@@ -21,7 +20,12 @@ pub fn cast_confuse(
         colors::LIGHT_CYAN,
     );
 
-    let monster_id = map::target_monster(tcod, objects, game, Some(GameConstants::CONFUSE_RANGE as f32));
+    let monster_id = map::target_monster(
+        tcod,
+        objects,
+        game,
+        Some(GameConstants::CONFUSE_RANGE as f32),
+    );
 
     if let Some(monster_id) = monster_id {
         let old_ai = objects[monster_id].ai.take().unwrap_or(Ai::Basic);

@@ -1,12 +1,12 @@
 use tcod::colors;
 
-use crate::tcod_container;
-use crate::game_objects::{ GameObject, Game, MessageLog };
 use crate::constants::game as GameConstants;
-use crate::items::{ UseResult };
+use crate::game_objects::{Game, GameObject, MessageLog};
+use crate::items::UseResult;
 use crate::map;
+use crate::tcod_container;
 
-use tcod_container::Tcod as Tcod;
+use tcod_container::Tcod;
 
 pub fn cast_lightning(
     _inventory_id: usize,
@@ -20,7 +20,9 @@ pub fn cast_lightning(
         // ZAP
         game.log.add(format!("A lightning bolt strikes the {} with a loud thunder! \n The damage is {} hit points ", objects[monster_id].name, GameConstants::LIGHTNING_DAMAGE), colors::LIGHT_BLUE);
 
-        if let Some(xp) = objects[monster_id].take_damage(GameConstants::LIGHTNING_DAMAGE, &mut game) {
+        if let Some(xp) =
+            objects[monster_id].take_damage(GameConstants::LIGHTNING_DAMAGE, &mut game)
+        {
             objects[GameConstants::PLAYER].fighter.as_mut().unwrap().xp += xp;
         };
 

@@ -5,13 +5,13 @@ extern crate rand;
 extern crate tcod;
 
 mod constants;
-mod game_objects;
 mod enemies;
+mod game_objects;
+mod items;
 mod map;
+mod render;
 mod spell_effects;
 mod tcod_container;
-mod items;
-mod render;
 
 use tcod::colors;
 use tcod::console::*;
@@ -30,19 +30,19 @@ use rand::Rng;
 use constants::game as GameConstants;
 use constants::gui as GuiConstants;
 
-use game_objects::Game as Game;
-use game_objects::GameObject as GameObject;
-use game_objects::Fighter as Fighter;
-use game_objects::DeathCallback as DeathCallback;
-use game_objects::Ai as Ai;
-use game_objects::Item as Item;
-use game_objects::Equipment as Equipment;
-use game_objects::Slot as Slot;
-use game_objects::MessageLog as MessageLog;
+use game_objects::Ai;
+use game_objects::DeathCallback;
+use game_objects::Equipment;
+use game_objects::Fighter;
+use game_objects::Game;
+use game_objects::GameObject;
+use game_objects::Item;
+use game_objects::MessageLog;
+use game_objects::Slot;
 
-use map::create_map as create_map;
+use map::create_map;
 
-use tcod_container::Tcod as Tcod;
+use tcod_container::Tcod;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PlayerAction {
@@ -99,9 +99,9 @@ fn handle_keys(
         }
         (Key { printable: 'g', .. }, true) => {
             // pick up an item
-            let item_id = objects
-                .iter()
-                .position(|object| object.pos() == objects[GameConstants::PLAYER].pos() && object.item.is_some());
+            let item_id = objects.iter().position(|object| {
+                object.pos() == objects[GameConstants::PLAYER].pos() && object.item.is_some()
+            });
 
             if let Some(item_id) = item_id {
                 pick_item_up(item_id, objects, game);
@@ -139,7 +139,8 @@ fn handle_keys(
             // show character information
             let player = &objects[GameConstants::PLAYER];
             let level = player.level;
-            let level_up_xp = GameConstants::LEVEL_UP_BASE + player.level * GameConstants::LEVEL_UP_FACTOR;
+            let level_up_xp =
+                GameConstants::LEVEL_UP_BASE + player.level * GameConstants::LEVEL_UP_FACTOR;
             if let Some(fighter) = player.fighter.as_ref() {
                 let msg = format!(
                     "Character Information: \n* Level: {} \n* Experience: {} \n* Experience to level up: {} \n\n* Maximum HP: {} \n* Attack: {} \n* Defense: {} \n",
@@ -152,9 +153,9 @@ fn handle_keys(
         }
         (Key { printable: '<', .. }, true) => {
             // go down the stairs if the player is on them
-            let player_on_stairs = objects
-                .iter()
-                .any(|object| object.pos() == objects[GameConstants::PLAYER].pos() && object.name == "stairs");
+            let player_on_stairs = objects.iter().any(|object| {
+                object.pos() == objects[GameConstants::PLAYER].pos() && object.name == "stairs"
+            });
 
             if player_on_stairs {
                 next_level(tcod, objects, game);
@@ -282,7 +283,10 @@ fn ai_basic(
         if objects[monster_id].distance_to(&objects[GameConstants::PLAYER]) >= 2.0 {
             let (player_x, player_y) = objects[GameConstants::PLAYER].pos();
             move_towards(monster_id, player_x, player_y, &mut game, objects);
-        } else if objects[GameConstants::PLAYER].fighter.map_or(false, |f| f.hp > 0) {
+        } else if objects[GameConstants::PLAYER]
+            .fighter
+            .map_or(false, |f| f.hp > 0)
+        {
             let (monster, player) = mut_two(monster_id, GameConstants::PLAYER, objects);
             monster.attack(player, &mut game);
         }
@@ -469,7 +473,10 @@ fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<GameObject>
         item.dequip(&mut game.log);
     }
 
-    item.set_pos(objects[GameConstants::PLAYER].x, objects[GameConstants::PLAYER].y);
+    item.set_pos(
+        objects[GameConstants::PLAYER].x,
+        objects[GameConstants::PLAYER].y,
+    );
 
     game.log
         .add(format!("You dropped a {}", item.name), colors::YELLOW);

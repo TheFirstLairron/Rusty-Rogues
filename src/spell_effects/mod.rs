@@ -1,4 +1,4 @@
-pub mod fireball;
 pub mod confuse;
-pub mod lightning;
+pub mod fireball;
 pub mod heal;
+pub mod lightning;
