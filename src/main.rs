@@ -11,7 +11,7 @@ use tcod::console::*;
 use tcod::input::Key;
 use tcod::input::KeyCode::*;
 use tcod::input::{self, Event, Mouse};
-use tcod::map::{FovAlgorithm, Map as FovMap};
+use tcod::map::Map as FovMap;
 
 use std::cmp;
 use std::error::Error;
@@ -21,41 +21,7 @@ use std::io::{Read, Write};
 use rand::distributions::{IndependentSample, Weighted, WeightedChoice};
 use rand::Rng;
 
-const ROOM_MAX_SIZE: i32 = 10;
-const ROOM_MIN_SIZE: i32 = 6;
-const MAX_ROOMS: i32 = 30;
-
-const FOV_ALGO: FovAlgorithm = FovAlgorithm::Basic;
-const FOV_LIGHT_WALLS: bool = true;
-
-const PLAYER: usize = 0;
-const TORCH_RADIUS: i32 = 10;
-const LEVEL_UP_BASE: i32 = 200;
-const LEVEL_UP_FACTOR: i32 = 150;
-const HEAL_AMOUNT: i32 = 40;
-const LIGHTNING_DAMAGE: i32 = 40;
-const LIGHTNING_RANGE: i32 = 5;
-const CONFUSE_RANGE: i32 = 8;
-const CONFUSE_NUM_TURNS: i32 = 10;
-
-const LIMIT_FPS: i32 = 20;
-
-const COLOR_DARK_WALL: Color = Color { r: 0, g: 0, b: 100 };
-const COLOR_LIGHT_WALL: Color = Color {
-    r: 130,
-    g: 110,
-    b: 50,
-};
-const COLOR_DARK_GROUND: Color = Color {
-    r: 50,
-    g: 50,
-    b: 150,
-};
-const COLOR_LIGHT_GROUND: Color = Color {
-    r: 200,
-    g: 180,
-    b: 50,
-};
+use constants::game as GameConstants;
 
 type Map = Vec<Vec<Tile>>;
 type Messages = Vec<(String, Color)>;
@@ -469,7 +435,7 @@ fn handle_keys(
 ) -> PlayerAction {
     use PlayerAction::*;
 
-    let player_alive = objects[PLAYER].alive;
+    let player_alive = objects[GameConstants::PLAYER].alive;
 
     match (key, player_alive) {
         (Key { code: Up, .. }, true) | (Key { code: NumPad8, .. }, true) => {
@@ -511,7 +477,7 @@ fn handle_keys(
             // pick up an item
             let item_id = objects
                 .iter()
-                .position(|object| object.pos() == objects[PLAYER].pos() && object.item.is_some());
+                .position(|object| object.pos() == objects[GameConstants::PLAYER].pos() && object.item.is_some());
 
             if let Some(item_id) = item_id {
                 pick_item_up(item_id, objects, game);
@@ -547,9 +513,9 @@ fn handle_keys(
         }
         (Key { printable: 'c', .. }, true) => {
             // show character information
-            let player = &objects[PLAYER];
+            let player = &objects[GameConstants::PLAYER];
             let level = player.level;
-            let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+            let level_up_xp = GameConstants::LEVEL_UP_BASE + player.level * GameConstants::LEVEL_UP_FACTOR;
             if let Some(fighter) = player.fighter.as_ref() {
                 let msg = format!(
                     "Character Information: \n* Level: {} \n* Experience: {} \n* Experience to level up: {} \n\n* Maximum HP: {} \n* Attack: {} \n* Defense: {} \n",
@@ -564,7 +530,7 @@ fn handle_keys(
             // go down the stairs if the player is on them
             let player_on_stairs = objects
                 .iter()
-                .any(|object| object.pos() == objects[PLAYER].pos() && object.name == "stairs");
+                .any(|object| object.pos() == objects[GameConstants::PLAYER].pos() && object.name == "stairs");
 
             if player_on_stairs {
                 next_level(tcod, objects, game);
@@ -590,9 +556,9 @@ fn handle_keys(
 
 fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     // originally checked if user moved, but that caused a bug: every action was delayed by one turn. No observable adverse effects from removing the check.
-    let player = &game_objects[PLAYER];
+    let player = &game_objects[GameConstants::PLAYER];
     tcod.fov
-        .compute_fov(player.x, player.y, TORCH_RADIUS, FOV_LIGHT_WALLS, FOV_ALGO);
+        .compute_fov(player.x, player.y, GameConstants::TORCH_RADIUS, GameConstants::FOV_LIGHT_WALLS, GameConstants::FOV_ALGO);
 
     // Go through all tiles and set their background color
     for y in 0..constants::gui::MAP_HEIGHT {
@@ -602,11 +568,11 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
             let is_wall = game.map[x as usize][y as usize].block_sight;
             let color = match (visible, is_wall) {
                 // Outside FOV
-                (false, true) => COLOR_DARK_WALL,
-                (false, false) => COLOR_DARK_GROUND,
+                (false, true) => GameConstants::COLOR_DARK_WALL,
+                (false, false) => GameConstants::COLOR_DARK_GROUND,
                 // Inside FOV
-                (true, true) => COLOR_LIGHT_WALL,
-                (true, false) => COLOR_LIGHT_GROUND,
+                (true, true) => GameConstants::COLOR_LIGHT_WALL,
+                (true, false) => GameConstants::COLOR_LIGHT_GROUND,
             };
 
             let explored = &mut game.map[x as usize][y as usize].explored;
@@ -671,7 +637,7 @@ fn render_all(tcod: &mut Tcod, game_objects: &[GameObject], game: &mut Game) {
     }
 
     // Show the players stats
-    let player = &game_objects[PLAYER];
+    let player = &game_objects[GameConstants::PLAYER];
     let hp = player.fighter.map_or(0, |f| f.hp);
     let max_hp = player.max_hp(game);
 
@@ -728,13 +694,13 @@ fn create_map(objects: &mut Vec<GameObject>, level: u32) -> Map {
 
     // Player is the first element, remove everything else.
     // NOTE: works only when the player is the first object!
-    assert_eq!(&objects[PLAYER] as *const _, &objects[0] as *const _);
+    assert_eq!(&objects[GameConstants::PLAYER] as *const _, &objects[0] as *const _);
     objects.truncate(1);
 
-    for _ in 0..MAX_ROOMS {
+    for _ in 0..GameConstants::MAX_ROOMS {
         // Random width and height
-        let w = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
-        let h = rand::thread_rng().gen_range(ROOM_MIN_SIZE, ROOM_MAX_SIZE + 1);
+        let w = rand::thread_rng().gen_range(GameConstants::ROOM_MIN_SIZE, GameConstants::ROOM_MAX_SIZE + 1);
+        let h = rand::thread_rng().gen_range(GameConstants::ROOM_MIN_SIZE, GameConstants::ROOM_MAX_SIZE + 1);
 
         let x = rand::thread_rng().gen_range(0, constants::gui::MAP_WIDTH - w);
         let y = rand::thread_rng().gen_range(0, constants::gui::MAP_HEIGHT - h);
@@ -752,7 +718,7 @@ fn create_map(objects: &mut Vec<GameObject>, level: u32) -> Map {
             let (center_x, center_y) = new_room.center();
 
             if rooms.is_empty() {
-                objects[PLAYER].set_pos(center_x, center_y)
+                objects[GameConstants::PLAYER].set_pos(center_x, center_y)
             } else {
                 let (prev_x, prev_y) = rooms[rooms.len() - 1].center();
 
@@ -1045,8 +1011,8 @@ fn move_towards(
 }
 
 fn player_move_or_attack(dx: i32, dy: i32, mut game: &mut Game, objects: &mut [GameObject]) {
-    let x = objects[PLAYER].x + dx;
-    let y = objects[PLAYER].y + dy;
+    let x = objects[GameConstants::PLAYER].x + dx;
+    let y = objects[GameConstants::PLAYER].y + dy;
 
     let target_id = objects
         .iter()
@@ -1054,10 +1020,10 @@ fn player_move_or_attack(dx: i32, dy: i32, mut game: &mut Game, objects: &mut [G
 
     match target_id {
         Some(target_id) => {
-            let (player, target) = mut_two(PLAYER, target_id, objects);
+            let (player, target) = mut_two(GameConstants::PLAYER, target_id, objects);
             player.attack(target, &mut game);
         }
-        None => move_by(PLAYER, dx, dy, &mut game, objects),
+        None => move_by(GameConstants::PLAYER, dx, dy, &mut game, objects),
     }
 }
 
@@ -1119,11 +1085,11 @@ fn ai_basic(
     // a basic monster takes its turn. If you can see it, it can see you.
     let (monster_x, monster_y) = objects[monster_id].pos();
     if tcod.fov.is_in_fov(monster_x, monster_y) {
-        if objects[monster_id].distance_to(&objects[PLAYER]) >= 2.0 {
-            let (player_x, player_y) = objects[PLAYER].pos();
+        if objects[monster_id].distance_to(&objects[GameConstants::PLAYER]) >= 2.0 {
+            let (player_x, player_y) = objects[GameConstants::PLAYER].pos();
             move_towards(monster_id, player_x, player_y, &mut game, objects);
-        } else if objects[PLAYER].fighter.map_or(false, |f| f.hp > 0) {
-            let (monster, player) = mut_two(monster_id, PLAYER, objects);
+        } else if objects[GameConstants::PLAYER].fighter.map_or(false, |f| f.hp > 0) {
+            let (monster, player) = mut_two(monster_id, GameConstants::PLAYER, objects);
             monster.attack(player, &mut game);
         }
     }
@@ -1382,7 +1348,7 @@ fn drop_item(inventory_id: usize, game: &mut Game, objects: &mut Vec<GameObject>
         item.dequip(&mut game.log);
     }
 
-    item.set_pos(objects[PLAYER].x, objects[PLAYER].y);
+    item.set_pos(objects[GameConstants::PLAYER].x, objects[GameConstants::PLAYER].y);
 
     game.log
         .add(format!("You dropped a {}", item.name), colors::YELLOW);
@@ -1395,12 +1361,12 @@ fn closest_monster(max_range: i32, objects: &mut [GameObject], tcod: &Tcod) -> O
     let mut closest_dist = (max_range + 1) as f32;
 
     for (id, object) in objects.iter().enumerate() {
-        if (id != PLAYER)
+        if (id != GameConstants::PLAYER)
             && object.fighter.is_some()
             && object.ai.is_some()
             && tcod.fov.is_in_fov(object.x, object.y)
         {
-            let dist = objects[PLAYER].distance_to(object);
+            let dist = objects[GameConstants::PLAYER].distance_to(object);
             if dist < closest_dist {
                 closest_enemy = Some(id);
                 closest_dist = dist;
@@ -1438,7 +1404,7 @@ fn target_tile(
         let in_fov = (x < constants::gui::MAP_WIDTH)
             && (y < constants::gui::MAP_HEIGHT)
             && tcod.fov.is_in_fov(x, y);
-        let in_range = max_range.map_or(true, |range| objects[PLAYER].distance(x, y) <= range);
+        let in_range = max_range.map_or(true, |range| objects[GameConstants::PLAYER].distance(x, y) <= range);
 
         if tcod.mouse.lbutton_pressed && in_fov && in_range {
             return Some((x, y));
@@ -1462,7 +1428,7 @@ fn target_monster(
             Some((x, y)) => {
                 // return the first clicked monster, otherwise continue looping
                 for (id, obj) in objects.iter().enumerate() {
-                    if obj.pos() == (x, y) && obj.fighter.is_some() && id != PLAYER {
+                    if obj.pos() == (x, y) && obj.fighter.is_some() && id != GameConstants::PLAYER {
                         return Some(id);
                     }
                 }
@@ -1479,7 +1445,7 @@ fn cast_heal(
     _tcod: &mut Tcod,
 ) -> UseResult {
     // heal the player
-    let player = &mut objects[PLAYER];
+    let player = &mut objects[GameConstants::PLAYER];
     if let Some(fighter) = player.fighter {
         if fighter.hp == player.max_hp(game) {
             game.log.add("You are already at full health.", colors::RED);
@@ -1488,7 +1454,7 @@ fn cast_heal(
 
         game.log
             .add("Your wounds start to close up!", colors::LIGHT_VIOLET);
-        objects[PLAYER].heal(HEAL_AMOUNT, game);
+        objects[GameConstants::PLAYER].heal(GameConstants::HEAL_AMOUNT, game);
         return UseResult::UsedUp;
     }
 
@@ -1502,13 +1468,13 @@ fn cast_lightning(
     tcod: &mut Tcod,
 ) -> UseResult {
     // find the closest enemy inside a max range and damage it
-    let monster_id = closest_monster(LIGHTNING_RANGE, objects, &tcod);
+    let monster_id = closest_monster(GameConstants::LIGHTNING_RANGE, objects, &tcod);
     if let Some(monster_id) = monster_id {
         // ZAP
-        game.log.add(format!("A lightning bolt strikes the {} with a loud thunder! \n The damage is {} hit points ", objects[monster_id].name, LIGHTNING_DAMAGE), colors::LIGHT_BLUE);
+        game.log.add(format!("A lightning bolt strikes the {} with a loud thunder! \n The damage is {} hit points ", objects[monster_id].name, GameConstants::LIGHTNING_DAMAGE), colors::LIGHT_BLUE);
 
-        if let Some(xp) = objects[monster_id].take_damage(LIGHTNING_DAMAGE, &mut game) {
-            objects[PLAYER].fighter.as_mut().unwrap().xp += xp;
+        if let Some(xp) = objects[monster_id].take_damage(GameConstants::LIGHTNING_DAMAGE, &mut game) {
+            objects[GameConstants::PLAYER].fighter.as_mut().unwrap().xp += xp;
         };
 
         UseResult::UsedUp
@@ -1532,13 +1498,13 @@ fn cast_confuse(
         colors::LIGHT_CYAN,
     );
 
-    let monster_id = target_monster(tcod, objects, game, Some(CONFUSE_RANGE as f32));
+    let monster_id = target_monster(tcod, objects, game, Some(GameConstants::CONFUSE_RANGE as f32));
 
     if let Some(monster_id) = monster_id {
         let old_ai = objects[monster_id].ai.take().unwrap_or(Ai::Basic);
         objects[monster_id].ai = Some(Ai::Confused {
             previous_ai: Box::new(old_ai),
-            num_turns: CONFUSE_NUM_TURNS,
+            num_turns: GameConstants::CONFUSE_NUM_TURNS,
         });
 
         game.log.add(
@@ -1588,14 +1554,14 @@ fn cast_fireball(
             if let Some(xp) = obj.take_damage(fireball::DAMAGE, &mut game) {
                 // can't alter player in this loop, and don't wanna give them xp for killing themselves.
                 // so we track it outside the loop and then award it after
-                if id != PLAYER {
+                if id != GameConstants::PLAYER {
                     xp_to_gain = xp;
                 }
             };
         }
     }
 
-    objects[PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
+    objects[GameConstants::PLAYER].fighter.as_mut().unwrap().xp += xp_to_gain;
 
     UseResult::UsedUp
 }
@@ -1653,7 +1619,7 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
 
     game.log
         .add(next_level::REST_LOG_MESSAGE, next_level::REST_COLOR);
-    let player = &mut objects[PLAYER];
+    let player = &mut objects[GameConstants::PLAYER];
     let heal_hp = player.max_hp(game) / 2;
     player.heal(heal_hp, game);
 
@@ -1669,8 +1635,8 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
 fn level_up(objects: &mut [GameObject], game: &mut Game, mut tcod: &mut Tcod) {
     use constants::gui::menus::level_up;
 
-    let player = &mut objects[PLAYER];
-    let level_up_xp = LEVEL_UP_BASE + player.level * LEVEL_UP_FACTOR;
+    let player = &mut objects[GameConstants::PLAYER];
+    let level_up_xp = GameConstants::LEVEL_UP_BASE + player.level * GameConstants::LEVEL_UP_FACTOR;
 
     // see if the player has enough xp
     if player.fighter.as_ref().map_or(0, |f| f.xp) >= level_up_xp {
@@ -1801,7 +1767,7 @@ fn play_game(mut game_objects: Vec<GameObject>, mut game: &mut Game, mut tcod: &
             break;
         }
 
-        if game_objects[PLAYER].alive && action != PlayerAction::DidntTakeTurn {
+        if game_objects[GameConstants::PLAYER].alive && action != PlayerAction::DidntTakeTurn {
             for id in 0..game_objects.len() {
                 if game_objects[id].ai.is_some() {
                     ai_take_turn(id, &mut game_objects, &mut tcod, &mut game);
@@ -1901,7 +1867,7 @@ fn main() {
         .title(constants::gui::menus::main::GAME_CONSOLE_HEADER)
         .init();
 
-    tcod::system::set_fps(LIMIT_FPS);
+    tcod::system::set_fps(GameConstants::LIMIT_FPS);
 
     let mut tcod = Tcod {
         root,
