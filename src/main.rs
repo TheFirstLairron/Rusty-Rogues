@@ -4,7 +4,9 @@ extern crate serde_derive;
 extern crate rand;
 extern crate tcod;
 
+mod ai;
 mod constants;
+mod data_manipulation;
 mod enemies;
 mod game_objects;
 mod items;
@@ -21,18 +23,14 @@ use tcod::input::KeyCode::*;
 use tcod::input::{self, Event};
 use tcod::map::Map as FovMap;
 
-use std::cmp;
-
-use rand::Rng;
+use game_objects::{Game, GameObject, Fighter, Equipment, Slot, DeathCallback, MessageLog};
+use tcod_container::Tcod;
+use data_manipulation::mut_two;
+use map::create_map;
 
 use constants::game as GameConstants;
 use constants::gui as GuiConstants;
 
-use game_objects::{Game, GameObject, Fighter, Equipment, Slot, Ai, DeathCallback, MessageLog};
-
-use map::create_map;
-
-use tcod_container::Tcod;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PlayerAction {
@@ -169,32 +167,6 @@ fn handle_keys(
     }
 }
 
-fn move_by(id: usize, dx: i32, dy: i32, game: &mut Game, objects: &mut [GameObject]) {
-    let (x, y) = objects[id].pos();
-
-    if !map::is_blocked(x + dx, y + dy, &game.map, objects) {
-        objects[id].set_pos(x + dx, y + dy);
-    }
-}
-
-fn move_towards(
-    id: usize,
-    target_x: i32,
-    target_y: i32,
-    mut game: &mut Game,
-    objects: &mut [GameObject],
-) {
-    // Vector from this object to the target and distance
-    let dx = target_x - objects[id].x;
-    let dy = target_y - objects[id].y;
-    let distance = ((dx.pow(2) + dy.pow(2)) as f32).sqrt();
-
-    // Normalize it to length 1 (preserving direction), then round it and convert to int so the movement is restricted to the grid
-    let dx = (dx as f32 / distance).round() as i32;
-    let dy = (dy as f32 / distance).round() as i32;
-    move_by(id, dx, dy, &mut game, objects);
-}
-
 fn player_move_or_attack(dx: i32, dy: i32, mut game: &mut Game, objects: &mut [GameObject]) {
     let x = objects[GameConstants::PLAYER].x + dx;
     let y = objects[GameConstants::PLAYER].y + dy;
@@ -208,93 +180,7 @@ fn player_move_or_attack(dx: i32, dy: i32, mut game: &mut Game, objects: &mut [G
             let (player, target) = mut_two(GameConstants::PLAYER, target_id, objects);
             player.attack(target, &mut game);
         }
-        None => move_by(GameConstants::PLAYER, dx, dy, &mut game, objects),
-    }
-}
-
-fn ai_take_turn(
-    monster_id: usize,
-    objects: &mut [GameObject],
-    mut tcod: &mut Tcod,
-    mut game: &mut Game,
-) {
-    use Ai::*;
-
-    if let Some(ai) = objects[monster_id].ai.take() {
-        let new_ai = match ai {
-            Basic => ai_basic(monster_id, objects, &mut tcod, &mut game),
-            Confused {
-                previous_ai,
-                num_turns,
-            } => ai_confused(monster_id, objects, &mut game, previous_ai, num_turns),
-        };
-
-        objects[monster_id].ai = Some(new_ai)
-    }
-}
-
-fn ai_basic(
-    monster_id: usize,
-    objects: &mut [GameObject],
-    tcod: &mut Tcod,
-    mut game: &mut Game,
-) -> Ai {
-    // a basic monster takes its turn. If you can see it, it can see you.
-    let (monster_x, monster_y) = objects[monster_id].pos();
-    if tcod.fov.is_in_fov(monster_x, monster_y) {
-        if objects[monster_id].distance_to(&objects[GameConstants::PLAYER]) >= 2.0 {
-            let (player_x, player_y) = objects[GameConstants::PLAYER].pos();
-            move_towards(monster_id, player_x, player_y, &mut game, objects);
-        } else if objects[GameConstants::PLAYER]
-            .fighter
-            .map_or(false, |f| f.hp > 0)
-        {
-            let (monster, player) = mut_two(monster_id, GameConstants::PLAYER, objects);
-            monster.attack(player, &mut game);
-        }
-    }
-
-    Ai::Basic
-}
-
-fn ai_confused(
-    monster_id: usize,
-    objects: &mut [GameObject],
-    mut game: &mut Game,
-    previous_ai: Box<Ai>,
-    num_turns: i32,
-) -> Ai {
-    if num_turns >= 0 {
-        // still confused, move in a random direction and decrease status duration
-        move_by(
-            monster_id,
-            rand::thread_rng().gen_range(-1, 2),
-            rand::thread_rng().gen_range(-1, 2),
-            &mut game,
-            objects,
-        );
-        Ai::Confused {
-            previous_ai,
-            num_turns: num_turns - 1,
-        }
-    } else {
-        // restore previous AI as this one gets cleared
-        game.log.add(
-            format!("The {} is no longer confused!", objects[monster_id].name),
-            colors::RED,
-        );
-        *previous_ai
-    }
-}
-
-fn mut_two<T>(first_index: usize, second_index: usize, items: &mut [T]) -> (&mut T, &mut T) {
-    assert!(first_index != second_index);
-    let split_at_index = cmp::max(first_index, second_index);
-    let (first_slice, second_slice) = items.split_at_mut(split_at_index);
-    if first_index < second_index {
-        (&mut first_slice[first_index], &mut second_slice[0])
-    } else {
-        (&mut second_slice[0], &mut first_slice[second_index])
+        None => ai::move_by(GameConstants::PLAYER, dx, dy, &mut game, objects),
     }
 }
 
@@ -455,7 +341,7 @@ fn play_game(mut game_objects: Vec<GameObject>, mut game: &mut Game, mut tcod: &
         if game_objects[GameConstants::PLAYER].alive && action != PlayerAction::DidntTakeTurn {
             for id in 0..game_objects.len() {
                 if game_objects[id].ai.is_some() {
-                    ai_take_turn(id, &mut game_objects, &mut tcod, &mut game);
+                    ai::take_turn(id, &mut game_objects, &mut tcod, &mut game);
                 }
             }
         }

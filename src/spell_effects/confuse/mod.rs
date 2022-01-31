@@ -1,12 +1,14 @@
 use tcod::colors;
 
-use crate::constants::game as GameConstants;
-use crate::game_objects::{Ai, Game, GameObject, MessageLog};
-use crate::items::UseResult;
 use crate::map;
 use crate::tcod_container;
+use crate::ai::Ai;
+use crate::game_objects::{Game, GameObject, MessageLog};
+use crate::items::UseResult;
+
 
 use tcod_container::Tcod;
+use crate::constants::game as GameConstants;
 
 pub fn cast_confuse(
     _inventory_id: usize,

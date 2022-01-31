@@ -6,12 +6,13 @@ use tcod::colors;
 use tcod::input::KeyCode::*;
 use tcod::input::{self, Event};
 
-use crate::constants;
-use crate::enemies;
 use crate::game_objects::{
-    Ai, DeathCallback, Equipment, Fighter, Game, GameObject, Map, Slot, Tile,
+    DeathCallback, Equipment, Fighter, Game, GameObject, Map, Slot, Tile,
 };
 use crate::items::Item;
+use crate::ai::Ai;
+use crate::constants;
+use crate::enemies;
 use crate::render;
 use crate::tcod_container;
 

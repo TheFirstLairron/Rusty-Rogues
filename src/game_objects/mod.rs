@@ -3,6 +3,7 @@ use tcod::console::*;
 
 use crate::constants;
 use crate::items::{Item};
+use crate::ai::{Ai};
 
 pub type Map = Vec<Vec<Tile>>;
 pub type Messages = Vec<(String, Color)>;
@@ -262,15 +263,6 @@ pub struct Game {
     pub log: Messages,
     pub inventory: Vec<GameObject>,
     pub dungeon_level: u32,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Ai {
-    Basic,
-    Confused {
-        previous_ai: Box<Ai>,
-        num_turns: i32,
-    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
