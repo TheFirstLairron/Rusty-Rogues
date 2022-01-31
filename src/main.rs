@@ -15,6 +15,7 @@ mod render;
 mod spell_effects;
 mod tcod_container;
 mod persistence;
+mod player;
 
 use tcod::colors;
 use tcod::console::*;
@@ -25,19 +26,11 @@ use tcod::map::Map as FovMap;
 
 use game_objects::{Game, GameObject, Fighter, Equipment, Slot, DeathCallback, MessageLog};
 use tcod_container::Tcod;
-use data_manipulation::mut_two;
 use map::create_map;
+use player::{PlayerAction};
 
 use constants::game as GameConstants;
 use constants::gui as GuiConstants;
-
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum PlayerAction {
-    TookTurn,
-    DidntTakeTurn,
-    Exit,
-}
 
 fn handle_keys(
     key: Key,
@@ -51,35 +44,35 @@ fn handle_keys(
 
     match (key, player_alive) {
         (Key { code: Up, .. }, true) | (Key { code: NumPad8, .. }, true) => {
-            player_move_or_attack(0, -1, game, objects);
+            player::move_or_attack(0, -1, game, objects);
             TookTurn
         }
         (Key { code: Down, .. }, true) | (Key { code: NumPad2, .. }, true) => {
-            player_move_or_attack(0, 1, game, objects);
+            player::move_or_attack(0, 1, game, objects);
             TookTurn
         }
         (Key { code: Left, .. }, true) | (Key { code: NumPad4, .. }, true) => {
-            player_move_or_attack(-1, 0, game, objects);
+            player::move_or_attack(-1, 0, game, objects);
             TookTurn
         }
         (Key { code: Right, .. }, true) | (Key { code: NumPad6, .. }, true) => {
-            player_move_or_attack(1, 0, game, objects);
+            player::move_or_attack(1, 0, game, objects);
             TookTurn
         }
         (Key { code: Home, .. }, true) | (Key { code: NumPad7, .. }, true) => {
-            player_move_or_attack(-1, -1, game, objects);
+            player::move_or_attack(-1, -1, game, objects);
             TookTurn
         }
         (Key { code: PageUp, .. }, true) | (Key { code: NumPad9, .. }, true) => {
-            player_move_or_attack(1, -1, game, objects);
+            player::move_or_attack(1, -1, game, objects);
             TookTurn
         }
         (Key { code: End, .. }, true) | (Key { code: NumPad1, .. }, true) => {
-            player_move_or_attack(-1, 1, game, objects);
+            player::move_or_attack(-1, 1, game, objects);
             TookTurn
         }
         (Key { code: PageDown, .. }, true) | (Key { code: NumPad3, .. }, true) => {
-            player_move_or_attack(1, 1, game, objects);
+            player::move_or_attack(1, 1, game, objects);
             TookTurn
         }
         (Key { code: NumPad5, .. }, true) => {
@@ -167,22 +160,7 @@ fn handle_keys(
     }
 }
 
-fn player_move_or_attack(dx: i32, dy: i32, mut game: &mut Game, objects: &mut [GameObject]) {
-    let x = objects[GameConstants::PLAYER].x + dx;
-    let y = objects[GameConstants::PLAYER].y + dy;
 
-    let target_id = objects
-        .iter()
-        .position(|object| object.fighter.is_some() && object.pos() == (x, y));
-
-    match target_id {
-        Some(target_id) => {
-            let (player, target) = mut_two(GameConstants::PLAYER, target_id, objects);
-            player.attack(target, &mut game);
-        }
-        None => ai::move_by(GameConstants::PLAYER, dx, dy, &mut game, objects),
-    }
-}
 
 /// Advance to the next level
 fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
@@ -201,52 +179,6 @@ fn next_level(tcod: &mut Tcod, objects: &mut Vec<GameObject>, game: &mut Game) {
     game.dungeon_level += 1;
     game.map = create_map(objects, game.dungeon_level);
     initialize_fov(game, tcod);
-}
-
-fn level_up(objects: &mut [GameObject], game: &mut Game, mut tcod: &mut Tcod) {
-    use GuiConstants::menus::level_up;
-
-    let player = &mut objects[GameConstants::PLAYER];
-    let level_up_xp = GameConstants::LEVEL_UP_BASE + player.level * GameConstants::LEVEL_UP_FACTOR;
-
-    // see if the player has enough xp
-    if player.fighter.as_ref().map_or(0, |f| f.xp) >= level_up_xp {
-        // level up!
-        player.level += 1;
-        game.log
-            .add(level_up::create_log_message(player.level), colors::YELLOW);
-
-        let mut fighter = player.fighter.as_mut().unwrap();
-        let mut choice = None;
-
-        while choice.is_none() {
-            choice = render::menu(
-                level_up::TITLE,
-                &[
-                    level_up::create_constitution_option(fighter.base_max_hp),
-                    level_up::create_stength_option(fighter.base_power),
-                    level_up::create_agility_option(fighter.base_defense),
-                ],
-                level_up::WIDTH,
-                &mut tcod,
-            );
-        }
-
-        fighter.xp -= level_up_xp;
-        match choice {
-            Some(0) => {
-                fighter.base_max_hp += 20;
-                fighter.hp += 20;
-            }
-            Some(1) => {
-                fighter.base_power += 1;
-            }
-            Some(2) => {
-                fighter.base_defense += 1;
-            }
-            _ => unreachable!(),
-        }
-    }
 }
 
 fn new_game(tcod: &mut Tcod) -> (Vec<GameObject>, Game) {
@@ -346,7 +278,7 @@ fn play_game(mut game_objects: Vec<GameObject>, mut game: &mut Game, mut tcod: &
             }
         }
 
-        level_up(&mut game_objects, game, tcod);
+        player::try_level_up(&mut game_objects, game, tcod);
     }
 }
 
